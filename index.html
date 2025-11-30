@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>网页五子棋对战（人机+双人）</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Microsoft YaHei", sans-serif; background: #f5f5f5; }
+        .container { width: 1000px; margin: 20px auto; display: flex; gap: 30px; }
+        /* 游戏面板 */
+        .game-panel { flex: 1; }
+        /* 棋盘（交叉点布局） */
+        #chessboard { 
+            width: 560px; 
+            height: 560px; 
+            margin: 20px auto; 
+            background: #d1b88c; 
+            border: 10px solid #d1b88c; 
+            position: relative;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            border-radius: 5px;
+        }
+        /* 棋盘线条（横向+纵向） */
+        .chess-line {
+            position: absolute;
+            background: #a08864;
+        }
+        .horizontal-line {
+            width: 100%;
+            height: 1px;
+        }
+        .vertical-line {
+            height: 100%;
+            width: 1px;
+        }
+        /* 棋盘星位点 */
+        .star-point {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #a08864;
+            border-radius: 50%;
+        }
+        /* 棋子（定位到交叉点） */
+        .chess { 
+            width: 32px; 
+            height: 32px; 
+            border-radius: 50%; 
+            position: absolute;
+            transform: translate(-50%, -50%); /* 让棋子中心对准交叉点 */
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: all 0.2s ease;
+        }
+        .chess:hover {
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+        .black { 
+            background: #000; 
+            background: radial-gradient(circle at 30% 30%, #333, #000);
+        }
+        .white { 
+            background: #fff; 
+            border: 1px solid #ccc;
+            background: radial-gradient(circle at 30% 30%, #fff, #ddd);
+        }
+        /* 最后一步棋子标记 */
+        .last-move {
+            box-shadow: 0 0 0 2px #f39c12, 0 0 10px rgba(243, 156, 18, 0.5);
+        }
+        /* 侧边栏 */
+        .sidebar { width: 280px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        .user-form { margin-bottom: 30px; }
+        .form-item { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { width: 100%; padding: 10px; background: #2c3e50; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; transition: background 0.3s; }
+        button:hover { background: #34495e; }
+        button.secondary { background: #95a5a6; }
+        button.secondary:hover { background: #7f8c8d; }
+        button.danger { background: #e74c3c; }
+        button.danger:hover { background: #c0392b; }
+        .button-group { display: flex; gap: 10px; margin-top: 10px; }
+        .game-info { margin-bottom: 30px; }
+        .rank-list { max-height: 300px; overflow-y: auto; }
+        .rank-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #eee; }
+        .rank-item:hover { background: #f9f9f9; }
+        .rank-item:nth-child(1) { color: #e74c3c; font-weight: bold; }
+        .rank-item:nth-child(2) { color: #f39c12; font-weight: bold; }
+        .rank-item:nth-child(3) { color: #2ecc71; font-weight: bold; }
+        .timeout-warning { color: #e74c3c; font-weight: bold; margin: 10px 0; text-align: center; }
+        .game-controls { margin-top: 20px; }
+        .current-player-indicator {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .indicator-black { background: #000; }
+        .indicator-white { background: #fff; border: 1px solid #ccc; }
+        /* 游戏模式选择 */
+        .game-mode {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .mode-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .mode-options {
+            display: flex;
+            gap: 10px;
+        }
+        .mode-option {
+            flex: 1;
+            text-align: center;
+            padding: 5px;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .mode-option.active {
+            border-color: #2c3e50;
+            background: #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 游戏面板 -->
+        <div class="game-panel">
+            <h1 style="text-align: center; color: #2c3e50;">五子棋对战游戏</h1>
+            <div id="chessboard"></div>
+            <div style="text-align: center; margin-top: 20px;">
+                <span id="current-player">当前玩家：<span class="current-player-indicator indicator-black"></span>黑方</span>
+                <span class="timeout-warning" id="timeout-warning"></span>
+                <div class="button-group" style="margin-top: 15px; justify-content: center;">
+                    <button id="undo-btn" class="secondary" disabled>悔棋</button>
+                    <button id="draw-btn" class="secondary" disabled>和棋</button>
+                    <button id="restart-btn" class="danger" disabled>重新开始</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <div class="user-form">
+                <h3>游戏设置</h3>
+                <!-- 游戏模式选择 -->
+                <div class="game-mode">
+                    <div class="mode-title">选择游戏模式</div>
+                    <div class="mode-options">
+                        <div class="mode-option active" data-mode="two-player">双人对战</div>
+                        <div class="mode-option" data-mode="ai-player">人机对战</div>
+                    </div>
+                </div>
+                <div class="form-item">
+                    <label for="username1">玩家1（黑方）</label>
+                    <input type="text" id="username1" placeholder="输入用户名">
+                </div>
+                <div class="form-item two-player-only">
+                    <label for="username2">玩家2（白方）</label>
+                    <input type="text" id="username2" placeholder="输入用户名">
+                </div>
+                <div class="form-item ai-player-only" style="display: none;">
+                    <label>电脑难度</label>
+                    <select id="ai-difficulty" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="easy">简单（随机落子）</option>
+                        <option value="medium" selected>中等（防守为主）</option>
+                        <option value="hard">困难（攻防兼备）</option>
+                    </select>
+                </div>
+                <button id="start-game">开始游戏</button>
+            </div>
+            <div class="game-info">
+                <h3>游戏状态</h3>
+                <p>黑方：<span id="black-user">-</span> 胜场：<span id="black-win">0</span></p>
+                <p>白方：<span id="white-user">-</span> 胜场：<span id="white-win">0</span></p>
+                <p>剩余时间：<span id="time-left">60s</span></p>
+            </div>
+            <div>
+                <h3>玩家排行榜</h3>
+                <div class="rank-list" id="rank-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        const chessboard = document.getElementById('chessboard');
+        const startBtn = document.getElementById('start-game');
+        const currentPlayerEl = document.getElementById('current-player');
+        const timeLeftEl = document.getElementById('time-left');
+        const timeoutWarningEl = document.getElementById('timeout-warning');
+        const rankListEl = document.getElementById('rank-list');
+        const blackUserEl = document.getElementById('black-user');
+        const whiteUserEl = document.getElementById('white-user');
+        const blackWinEl = document.getElementById('black-win');
+        const whiteWinEl = document.getElementById('white-win');
+        const undoBtn = document.getElementById('undo-btn');
+        const drawBtn = document.getElementById('draw-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const modeOptions = document.querySelectorAll('.mode-option');
+        const twoPlayerOnly = document.querySelectorAll('.two-player-only');
+        const aiPlayerOnly = document.querySelectorAll('.ai-player-only');
+        const aiDifficulty = document.getElementById('ai-difficulty');
+
+        let chessData = Array(15).fill().map(() => Array(15).fill(0)); // 0:空 1:黑 2:白
+        let currentPlayer = 1; 
+        let gameStarted = false;
+        let timer = null;
+        let timeLeft = 60; 
+        let users = { 1: '', 2: '' }; 
+        let userScores = JSON.parse(localStorage.getItem('gobangScores')) || {}; 
+        let moveHistory = []; // 存储落子历史，用于悔棋
+        let lastChessElement = null; // 记录最后一步棋子元素
+        let gameMode = 'two-player'; // 当前游戏模式：two-player/ai-player
+        let isAIMoving = false; // 标记AI是否正在落子
+
+        // 初始化游戏模式选择
+        modeOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                modeOptions.forEach(opt => opt.classList.remove('active'));
+                option.classList.add('active');
+                gameMode = option.dataset.mode;
+                
+                // 显示对应的表单
+                if (gameMode === 'two-player') {
+                    twoPlayerOnly.forEach(el => el.style.display = 'block');
+                    aiPlayerOnly.forEach(el => el.style.display = 'none');
+                } else {
+                    twoPlayerOnly.forEach(el => el.style.display = 'none');
+                    aiPlayerOnly.forEach(el => el.style.display = 'block');
+                    whiteUserEl.textContent = '电脑AI';
+                }
+            });
+        });
+
+        // 初始化棋盘
+        function initChessboard() {
+            chessboard.innerHTML = '';
+            chessData = Array(15).fill().map(() => Array(15).fill(0));
+            moveHistory = [];
+            lastChessElement = null;
+            const size = 560;
+            const gridSize = size / 14;
+
+            // 绘制线条
+            for (let i = 0; i < 15; i++) {
+                // 横向线条
+                const hLine = document.createElement('div');
+                hLine.className = 'chess-line horizontal-line';
+                hLine.style.top = `${i * gridSize}px`;
+                chessboard.appendChild(hLine);
+                
+                // 纵向线条
+                const vLine = document.createElement('div');
+                vLine.className = 'chess-line vertical-line';
+                vLine.style.left = `${i * gridSize}px`;
+                chessboard.appendChild(vLine);
+            }
+
+            // 绘制星位点
+            const starPoints = [[3, 3], [3, 11], [7, 7], [11, 3], [11, 11]];
+            starPoints.forEach(([x, y]) => {
+                const star = document.createElement('div');
+                star.className = 'star-point';
+                star.style.left = `${x * gridSize}px`;
+                star.style.top = `${y * gridSize}px`;
+                star.style.transform = 'translate(-50%, -50%)';
+                chessboard.appendChild(star);
+            });
+
+            // 棋盘点击事件
+            chessboard.addEventListener('click', (e) => {
+                if (!gameStarted || isAIMoving) return;
+                if (gameMode === 'ai-player' && currentPlayer === 2) return; // AI回合不允许点击
+                
+                const rect = chessboard.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const i = Math.round(x / gridSize);
+                const j = Math.round(y / gridSize);
+
+                if (i < 0 || i >= 15 || j < 0 || j >= 15) return;
+                if (chessData[i][j] !== 0) return;
+
+                // 玩家落子
+                placeChess(i, j, currentPlayer);
+
+                // 判断胜负
+                if (checkWin(i, j)) {
+                    const winner = currentPlayer === 1 ? users[1] : users[2];
+                    alert(`恭喜${winner}获胜！`);
+                    updateScore(winner);
+                    endGame();
+                    return;
+                }
+
+                // 检查平局
+                if (checkDraw()) {
+                    alert('本局游戏双方战平！');
+                    endGame();
+                    return;
+                }
+
+                // 切换玩家
+                currentPlayer = currentPlayer === 1 ? 2 : 1;
+                updateCurrentPlayerDisplay();
+                resetTimer();
+
+                // 如果是人机对战且当前是AI回合，AI落子
+                if (gameMode === 'ai-player' && currentPlayer === 2) {
+                    setTimeout(aiMove, 800); // 延迟落子，模拟思考
+                }
+            });
+        }
+
+        // 落子函数
+        function placeChess(i, j, player) {
+            chessData[i][j] = player;
+            const chess = document.createElement('div');
+            chess.className = player === 1 ? 'chess black' : 'chess white';
+            const gridSize = 560 / 14;
+            chess.style.left = `${i * gridSize}px`;
+            chess.style.top = `${j * gridSize}px`;
+            chessboard.appendChild(chess);
+
+            // 记录历史
+            moveHistory.push({i, j, player, element: chess});
+            
+            // 标记最后一步
+            if (lastChessElement) {
+                lastChessElement.classList.remove('last-move');
+            }
+            chess.classList.add('last-move');
+            lastChessElement = chess;
+
+            // 更新悔棋按钮
+            undoBtn.disabled = moveHistory.length === 0;
+        }
+
+        // AI落子逻辑
+        function aiMove() {
+            if (!gameStarted) return;
+            isAIMoving = true;
+            const difficulty = aiDifficulty.value;
+            let bestMove = null;
+
+            switch (difficulty) {
+                case 'hard':
+                    // 困难模式：先防守，再进攻，最后选中心
+                    bestMove = findWinningMove(2) || // AI自己能赢的位置
+                               findWinningMove(1) || // 阻止玩家赢的位置
+                               findGoodMove(2) ||    // AI进攻位置
+                               findGoodMove(1) ||    // 防守玩家进攻
+                               getCenterMove() ||    // 中心位置
+                               getRandomMove();      // 随机位置
+                    break;
+                case 'medium':
+                    // 中等模式：先防守，再选中心，最后随机
+                    bestMove = findWinningMove(1) || // 优先阻止玩家
+                               getCenterMove() ||    // 中心位置
+                               findGoodMove(2) ||    // 简单进攻
+                               getRandomMove();      // 随机位置
+                    break;
+                case 'easy':
+                default:
+                    // 简单模式：随机落子
+                    bestMove = getRandomMove();
+                    break;
+            }
+
+            if (bestMove) {
+                const {i, j} = bestMove;
+                placeChess(i, j, 2);
+
+                // 判断AI是否获胜
+                if (checkWin(i, j)) {
+                    alert('电脑AI获胜！');
+                    updateScore('电脑AI');
+                    endGame();
+                    isAIMoving = false;
+                    return;
+                }
+
+                // 检查平局
+                if (checkDraw()) {
+                    alert('本局游戏双方战平！');
+                    endGame();
+                    isAIMoving = false;
+                    return;
+                }
+
+                // 切换回玩家回合
+                currentPlayer = 1;
+                updateCurrentPlayerDisplay();
+                resetTimer();
+            }
+
+            isAIMoving = false;
+        }
+
+        // 寻找能赢的位置
+        function findWinningMove(player) {
+            for (let i = 0; i < 15; i++) {
+                for (let j = 0; j < 15; j++) {
+                    if (chessData[i][j] === 0) {
+                        chessData[i][j] = player;
+                        if (checkWin(i, j)) {
+                            chessData[i][j] = 0; // 回溯
+                            return {i, j};
+                        }
+                        chessData[i][j] = 0; // 回溯
+                    }
+                }
+            }
+            return null;
+        }
+
+        // 寻找有利位置（有3子或4子相连的位置）
+        function findGoodMove(player) {
+            const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+            
+            for (let i = 0; i < 15; i++) {
+                for (let j = 0; j < 15; j++) {
+                    if (chessData[i][j] === 0) {
+                        // 模拟落子
+                        chessData[i][j] = player;
+                        
+                        let maxCount = 0;
+                        for (const [dx, dy] of directions) {
+                            let count = 1;
+                            // 正向
+                            for (let k = 1; k < 4; k++) {
+                                const nx = i + dx * k;
+                                const ny = j + dy * k;
+                                if (nx >= 0 && nx < 15 && ny >= 0 && ny < 15 && chessData[nx][ny] === player) {
+                                    count++;
+                                } else {
+                                    break;
+                                }
+                            }
+                            // 反向
+                            for (let k = 1; k < 4; k++) {
+                                const nx = i - dx * k;
+                                const ny = j - dy * k;
+                                if (nx >= 0 && nx < 15 && ny >= 0 && ny < 15 && chessData[nx][ny] === player) {
+                                    count++;
+                                } else {
+                                    break;
+                                }
+                            }
+                            maxCount = Math.max(maxCount, count);
+                        }
+                        
+                        // 回溯
+                        chessData[i][j] = 0;
+                        
+                        // 如果找到3子或4子相连的位置
+                        if (maxCount >= 3) {
+                            return {i, j};
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        // 获取中心附近的位置
+        function getCenterMove() {
+            const centerArea = [
+                [6, 6], [6, 7], [6, 8],
+                [7, 6], [7, 7], [7, 8],
+                [8, 6], [8, 7], [8, 8]
+            ];
+            
+            // 打乱顺序
+            const shuffled = [...centerArea].sort(() => Math.random() - 0.5);
+            
+            for (const [i, j] of shuffled) {
+                if (chessData[i][j] === 0) {
+                    return {i, j};
+                }
+            }
+            
+            // 中心区域满了，找附近的位置
+            for (let i = 4; i < 11; i++) {
+                for (let j = 4; j < 11; j++) {
+                    if (chessData[i][j] === 0) {
+                        return {i, j};
+                    }
+                }
+            }
+            
+            return null;
+        }
+
+        // 获取随机位置
+        function getRandomMove() {
+            const emptyPositions = [];
+            for (let i = 0; i < 15; i++) {
+                for (let j = 0; j < 15; j++) {
+                    if (chessData[i][j] === 0) {
+                        emptyPositions.push({i, j});
+                    }
+                }
+            }
+            return emptyPositions[Math.floor(Math.random() * emptyPositions.length)];
+        }
+
+        // 检查平局
+        function checkDraw() {
+            for (let i = 0; i < 15; i++) {
+                for (let j = 0; j < 15; j++) {
+                    if (chessData[i][j] === 0) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        // 更新当前玩家显示
+        function updateCurrentPlayerDisplay() {
+            if (currentPlayer === 1) {
+                currentPlayerEl.innerHTML = '当前玩家：<span class="current-player-indicator indicator-black"></span>' + (users[1] || '黑方');
+            } else {
+                const playerName = gameMode === 'ai-player' ? '电脑AI' : (users[2] || '白方');
+                currentPlayerEl.innerHTML = '当前玩家：<span class="current-player-indicator indicator-white"></span>' + playerName;
+            }
+        }
+
+        // 悔棋功能
+        function undoMove() {
+            if (moveHistory.length === 0 || isAIMoving) return;
+            
+            clearInterval(timer);
+            
+            // 最后一步
+            const lastMove = moveHistory.pop();
+            const {i, j, player, element} = lastMove;
+            
+            // 恢复棋盘
+            chessData[i][j] = 0;
+            element.remove();
+            
+            // 更新最后一步标记
+            if (moveHistory.length > 0) {
+                lastChessElement = moveHistory[moveHistory.length - 1].element;
+                lastChessElement.classList.add('last-move');
+            } else {
+                lastChessElement = null;
+            }
+            
+            // 切换玩家
+            currentPlayer = player;
+            updateCurrentPlayerDisplay();
+            
+            // 更新按钮状态
+            undoBtn.disabled = moveHistory.length === 0;
+            
+            // 重启计时器
+            resetTimer();
+        }
+
+        // 提议和棋（人机模式下直接询问玩家）
+        function proposeDraw() {
+            if (!gameStarted || isAIMoving) return;
+            
+            if (gameMode === 'ai-player') {
+                // 人机模式：50%概率同意和棋
+                const agreeDraw = Math.random() > 0.5;
+                if (agreeDraw) {
+                    alert('电脑AI同意和棋！');
+                    endGame();
+                } else {
+                    alert('电脑AI拒绝了和棋提议，游戏继续！');
+                    resetTimer();
+                }
+            } else {
+                // 双人模式
+                const currentUserName = currentPlayer === 1 ? users[1] : users[2];
+                const otherUserName = currentPlayer === 1 ? users[2] : users[1];
+                
+                if (confirm(`${currentUserName}提议和棋，是否同意？`)) {
+                    alert('双方同意和棋！');
+                    endGame();
+                } else {
+                    alert(`${otherUserName}拒绝了和棋提议，游戏继续！`);
+                    resetTimer();
+                }
+            }
+        }
+
+        // 重新开始游戏
+        function restartGame() {
+            if (confirm('确定要重新开始游戏吗？当前进度将会丢失！')) {
+                endGame();
+                setTimeout(() => {
+                    startBtn.click();
+                }, 300);
+            }
+        }
+
+        // 检查胜负
+        function checkWin(x, y) {
+            const type = chessData[x][y];
+            const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+            for (const [dx, dy] of directions) {
+                let count = 1;
+                // 正向
+                for (let i = 1; i < 5; i++) {
+                    const nx = x + dx * i;
+                    const ny = y + dy * i;
+                    if (nx >= 0 && nx < 15 && ny >= 0 && ny < 15 && chessData[nx][ny] === type) count++;
+                    else break;
+                }
+                // 反向
+                for (let i = 1; i < 5; i++) {
+                    const nx = x - dx * i;
+                    const ny = y - dy * i;
+                    if (nx >= 0 && nx < 15 && ny >= 0 && ny < 15 && chessData[nx][ny] === type) count++;
+                    else break;
+                }
+                if (count >= 5) return true;
+            }
+            return false;
+        }
+
+        // 计时器相关
+        function startTimer() {
+            clearInterval(timer);
+            timeLeft = 60;
+            timeLeftEl.textContent = `${timeLeft}s`;
+            timeoutWarningEl.textContent = '';
+            
+            // 人机模式下AI回合不计时
+            if (gameMode === 'ai-player' && currentPlayer === 2) return;
+            
+            timer = setInterval(() => {
+                timeLeft--;
+                timeLeftEl.textContent = `${timeLeft}s`;
+                if (timeLeft <= 10) timeoutWarningEl.textContent = '警告！剩余时间不足10秒！';
+                if (timeLeft <= 0) {
+                    const loser = currentPlayer === 1 ? users[1] : (gameMode === 'ai-player' ? '电脑AI' : users[2]);
+                    const winner = currentPlayer === 1 ? (gameMode === 'ai-player' ? '电脑AI' : users[2]) : users[1];
+                    alert(`${loser}超时未落子，${winner}获胜！`);
+                    updateScore(winner);
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function resetTimer() { 
+            clearInterval(timer); 
+            startTimer(); 
+        }
+
+        // 分数更新
+        function updateScore(username) {
+            if (!username || username === '电脑AI') return; // 电脑AI不计入排行榜
+            userScores[username] = (userScores[username] || 0) + 1;
+            localStorage.setItem('gobangScores', JSON.stringify(userScores));
+            updateRankList();
+            if (username === users[1]) blackWinEl.textContent = userScores[username];
+            if (username === users[2]) whiteWinEl.textContent = userScores[username];
+        }
+
+        // 更新排行榜
+        function updateRankList() {
+            const sortedUsers = Object.entries(userScores).sort((a, b) => b[1] - a[1]);
+            rankListEl.innerHTML = '';
+            
+            if (sortedUsers.length === 0) {
+                const emptyItem = document.createElement('div');
+                emptyItem.className = 'rank-item';
+                emptyItem.textContent = '暂无游戏记录';
+                rankListEl.appendChild(emptyItem);
+                return;
+            }
+            
+            sortedUsers.forEach(([name, score], index) => {
+                const item = document.createElement('div');
+                item.className = 'rank-item';
+                item.innerHTML = `<span>${index + 1}. ${name}</span><span>胜场：${score}</span>`;
+                rankListEl.appendChild(item);
+            });
+        }
+
+        // 开始游戏
+        startBtn.addEventListener('click', () => {
+            const username1 = document.getElementById('username1').value.trim();
+            let username2 = '';
+            
+            if (gameMode === 'two-player') {
+                username2 = document.getElementById('username2').value.trim();
+                if (!username1 || !username2) return alert('请输入两位玩家的用户名！');
+                if (username1 === username2) return alert('两位玩家用户名不能相同！');
+                whiteUserEl.textContent = username2;
+            } else {
+                if (!username1) return alert('请输入玩家用户名！');
+                whiteUserEl.textContent = '电脑AI';
+                username2 = '电脑AI';
+            }
+            
+            users[1] = username1;
+            users[2] = username2;
+            blackUserEl.textContent = username1;
+            blackWinEl.textContent = userScores[username1] || 0;
+            whiteWinEl.textContent = userScores[username2] || 0;
+            
+            gameStarted = true;
+            currentPlayer = 1;
+            updateCurrentPlayerDisplay();
+            initChessboard();
+            startTimer();
+            
+            // 按钮状态更新
+            undoBtn.disabled = false;
+            drawBtn.disabled = false;
+            restartBtn.disabled = false;
+        });
+
+        // 绑定按钮事件
+        undoBtn.addEventListener('click', undoMove);
+        drawBtn.addEventListener('click', proposeDraw);
+        restartBtn.addEventListener('click', restartGame);
+
+        // 结束游戏
+        function endGame() {
+            gameStarted = false;
+            clearInterval(timer);
+            undoBtn.disabled = true;
+            drawBtn.disabled = true;
+            restartBtn.disabled = true;
+            
+            // 清空输入框
+            document.getElementById('username1').value = '';
+            if (gameMode === 'two-player') {
+                document.getElementById('username2').value = '';
+            }
+        }
+
+        // 初始化页面
+        initChessboard();
+        updateRankList();
+        updateCurrentPlayerDisplay();
+    </script>
+</body>
+</html>
